@@ -55,7 +55,7 @@ def request_spot_fleet(availability_zone='us-east-1a',
     }
 
     response = client.request_spot_fleet(SpotFleetRequestConfig=request_config)
-    config['spot-fleet-request'] = spot_fleet_response['SpotFleetRequestId']
+    config['spot-fleet-request'] = response['SpotFleetRequestId']
 
     with open('config.yaml', 'w') as fp:
         yaml.dump(config, fp, default_flow_style=False)

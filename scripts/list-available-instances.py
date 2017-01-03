@@ -20,13 +20,13 @@ def list_available_instances():
         ]
     )
 
-    for instance in response['Reservations'][0]['Instances']:
+    for reservation in response['Reservations']:
+        instance = reservation['Instances'][0]
         print '-' * 80
         print 'InstanceId:', instance['InstanceId']
         print 'InstanceType:', instance['InstanceType']
         print 'PublicDnsName:', instance['PublicDnsName']
     print '-' * 80
-
 
 def main():
     list_available_instances()
