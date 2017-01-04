@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """
 Create a snapshot from the data volume.
 The volume is being deleted.

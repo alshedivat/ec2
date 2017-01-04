@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """
 Create a new EBS data volume from a snapshot.
 The snapshot is deleted.

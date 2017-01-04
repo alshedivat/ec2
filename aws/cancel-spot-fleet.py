@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """
 Cancel a spot instance fleet.
 """

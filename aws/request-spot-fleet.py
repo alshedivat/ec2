@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """
 Request a new spot instance fleet.
 """
