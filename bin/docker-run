@@ -1,0 +1,6 @@
+#!/bin/bash
+NV_GPU=0 \
+nvidia-docker run -d -it -p 8888:8888 -p 6006:6006 \
+                  -v /home/ubuntu/dev:/root/dev \
+                  -v /home/ubuntu/data:/root/data \
+tensorflow/tensorflow bash

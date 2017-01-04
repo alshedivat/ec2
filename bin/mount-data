@@ -1,0 +1,3 @@
+#!/bin/bash
+sudo mount -t ext4 /dev/xvdf $HOME/data
+sudo chown ubuntu:ubuntu $HOME/data
