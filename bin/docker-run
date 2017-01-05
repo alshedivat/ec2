@@ -1,6 +1,47 @@
 #!/bin/bash
-NV_GPU=0 \
+
+# Default parameters
+IMAGE=None
+GPU=0
+
+USAGE_MSG="usage: docker-run [-h|--help] [-i|--image IMAGE] [-g|--gpu GPU]"
+
+while [[ $# > 0 ]]; do
+    key="$1"
+
+    case $key in
+        -h|--help)
+        echo $USAGE_MSG
+        exit 0
+        ;;
+        -i|--image)
+        IMAGE="$2"
+        shift
+        ;;
+        -g|--gpu)
+        GPU="$2"
+        shift
+        ;;
+        *)
+        echo "Option $1 is unknown."
+        echo $USAGE_MSG
+        exit 0
+        ;;
+    esac
+    shift
+done
+
+# Check if the required arguments are provided
+if [ "$IMAGE" == "None" ]; then
+    echo Argument IMAGE is required but not provided.
+    echo
+    echo $USAGE_MSG
+    exit 0
+fi
+
+# Run docker image
+NV_GPU=$GPU \
 nvidia-docker run -d -it -p 8888:8888 -p 6006:6006 \
                   -v /home/ubuntu/dev:/root/dev \
                   -v /home/ubuntu/data:/root/data \
-tensorflow/tensorflow bash
+$IMAGE bash

@@ -3,6 +3,7 @@
 Create a new EBS data volume from a snapshot.
 The snapshot is deleted.
 """
+import argparse
 import boto3
 import yaml
 import sys
@@ -14,7 +15,7 @@ client = boto3.client('ec2')
 
 def create_data_volume(availability_zone='us-east-1a',
                        volume_type='gp2'):
-    with open('config.yaml') as fp:
+    with open('.config.yaml') as fp:
         config = yaml.load(fp)
     snapshot_id = config['data-snapshot']
 
@@ -37,12 +38,26 @@ def create_data_volume(availability_zone='us-east-1a',
     config['data-snapshot'] = None
     sys.stdout.write("Done.\n")
 
-    with open('config.yaml', 'w') as fp:
+    with open('.config.yaml', 'w') as fp:
         yaml.dump(config, fp, default_flow_style=False)
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument("-az", "--availability_zone", metavar="zone",
+                        help="availability zone of the requested instances",
+                        default="us-east-1a")
+    parser.add_argument("-t", "--volume_type", metavar="TYPE",
+                        help="type of the requested volume",
+                        default="gp2")
+    return parser.parse_args()
+
+
 def main():
-    create_data_volume()
+    args = parse_args()
+    create_data_volume(availability_zone=args.availability_zone,
+                       volume_type=args.volume_type)
 
 
 if __name__ == '__main__':

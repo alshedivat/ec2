@@ -3,6 +3,7 @@
 Create a snapshot from the data volume.
 The volume is being deleted.
 """
+import argparse
 import boto3
 import yaml
 import sys
@@ -12,9 +13,8 @@ from pprint import pprint
 client = boto3.client('ec2')
 
 
-def create_data_snapshot(availability_zone='us-east-1a',
-                         volume_type='gp2'):
-    with open('config.yaml') as fp:
+def create_data_snapshot():
+    with open('.config.yaml') as fp:
         config = yaml.load(fp)
     volume_id = config['data-volume']
 
@@ -36,11 +36,17 @@ def create_data_snapshot(availability_zone='us-east-1a',
     config['data-volume'] = None
     sys.stdout.write("Done.\n")
 
-    with open('config.yaml', 'w') as fp:
+    with open('.config.yaml', 'w') as fp:
         yaml.dump(config, fp, default_flow_style=False)
 
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+    return parser.parse_args()
+
+
 def main():
+    args = parse_args()
     create_data_snapshot()
 
 
