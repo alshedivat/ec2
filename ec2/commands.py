@@ -253,7 +253,8 @@ def attach_data_volume(args):
 
     ec2 = boto3.client('ec2')
 
-    print("Attaching the volume...", end="")
+    print("Attaching volume %s to instance %s..." %
+          (volume_id, args.instance_id), end="")
     sys.stdout.flush()
     response = ec2.attach_volume(VolumeId=volume_id,
                                  InstanceId=args.instance_id,
@@ -281,7 +282,8 @@ def detach_data_volume(args):
 
     ec2 = boto3.client('ec2')
 
-    print("Detaching the volume...", end="")
+    print("Detaching volume %s from instance %s..." %
+          (volume_id, attached_to), end="")
     sys.stdout.flush()
     response = ec2.detach_volume(VolumeId=volume_id, Force=args.force)
     config['EC2']['volume_attached_to'] = None
