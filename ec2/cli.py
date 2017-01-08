@@ -102,6 +102,13 @@ def parse_args():
         "-i", "--instance_id", required=True,
         help="instance id to which the volume is attached")
 
+    volume_detach = volume_subparsers.add_parser(
+        "detach", help="detach the volume")
+    volume_detach.set_defaults(cmd=cmd.detach_data_volume)
+    volume_detach.add_argument(
+        "-f", "--force", action="store_true",
+        help="whether to force-detach the volume (data loss may occur)")
+
     return parser.parse_args()
 
 

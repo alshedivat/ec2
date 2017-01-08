@@ -239,26 +239,52 @@ def attach_data_volume(args):
     attached_to = config['EC2']['volume_attached_to']
 
     if volume_id is None:
-        sys.stdout.write(
-            "No data volumes available. First create a data volume. "
-            "I you have a snapshot of a data volume, you can create it "
-            "from snapshot using `aws-create-data-volume` utility.")
+        print("No data volumes available. First create a data volume. "
+              "I you have a snapshot of a data volume, you can restore the "
+              "volume using `ec2 volume restore` command. "
+              "Type `ec2 volume restore -h` for help.")
         return
 
     if attached_to is not None:
-        sys.stdout.write(
-            "The data volume %s is already attached to instance %s. "
-            "The volume cannot be attached to multiple instances." %
-            (volume_id, attached_to))
+        print("The data volume %s is already attached to instance %s. "
+              "The volume cannot be attached to multiple instances." %
+              (volume_id, attached_to))
         return
 
     ec2 = boto3.client('ec2')
 
-    sys.stdout.write("Attaching the volume..."); sys.stdout.flush()
+    print("Attaching the volume...", end="")
+    sys.stdout.flush()
     response = ec2.attach_volume(VolumeId=volume_id,
                                  InstanceId=args.instance_id,
                                  Device='xvdh')
     config['EC2']['volume_attached_to'] = args.instance_id
-    sys.stdout.write("Done.\n")
+    print("Done.")
+
+    save_config(config, args.config_dir)
+
+
+def detach_data_volume(args):
+    """Detach the data volume from an instance.
+    """
+    config = load_config(args.config_dir)
+    volume_id = config['EC2']['volume_id']
+    attached_to = config['EC2']['volume_attached_to']
+
+    if volume_id is None:
+        print("No data volumes available. Nothing to do.")
+        return
+
+    if attached_to is None:
+        print("The volume %s is not attached. Nothing to do." % volume_id)
+        return
+
+    ec2 = boto3.client('ec2')
+
+    print("Detaching the volume...", end="")
+    sys.stdout.flush()
+    response = ec2.detach_volume(VolumeId=volume_id, Force=args.force)
+    config['EC2']['volume_attached_to'] = None
+    print("Done.")
 
     save_config(config, args.config_dir)
