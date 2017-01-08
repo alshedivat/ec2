@@ -158,8 +158,10 @@ def cancel_spot_fleet(args):
         print("No active spot fleet requests. Nothing to cancel.")
         return
 
+    ec2 = boto3.client('ec2')
+
     print("Canceling spot fleet request %s..." % spot_fleet_id, end="")
-    client.cancel_spot_fleet_requests(
+    ec2.cancel_spot_fleet_requests(
         SpotFleetRequestIds=[spot_fleet_id],
         TerminateInstances=True)
     print("Done.")
@@ -250,10 +252,12 @@ def attach_data_volume(args):
             (volume_id, attached_to))
         return
 
+    ec2 = boto3.client('ec2')
+
     sys.stdout.write("Attaching the volume..."); sys.stdout.flush()
-    response = client.attach_volume(VolumeId=volume_id,
-                                    InstanceId=args.instance_id,
-                                    Device='xvdh')
+    response = ec2.attach_volume(VolumeId=volume_id,
+                                 InstanceId=args.instance_id,
+                                 Device='xvdh')
     config['EC2']['volume_attached_to'] = args.instance_id
     sys.stdout.write("Done.\n")
 
