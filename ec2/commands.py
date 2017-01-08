@@ -42,9 +42,10 @@ def configure(args):
 
         save_config(config, args.config_dir)
     else:
-        config = load_config(args.config_dir)
-        config_dict = {sec: dict(items) for sec, items in config.items()}
-        pprint(config_dict)
+        filepath = os.path.join(args.config_dir, '.ec2.ini')
+        with open(filepath) as fp:
+            for line in fp.readlines():
+                print(line.strip())
 
 
 def load_config(config_dir):
