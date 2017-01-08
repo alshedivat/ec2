@@ -14,7 +14,7 @@ setup(
     author_email='maruan@alshedivat.com',
     url='https://github.com/alshedivat/aws-ec2-on-a-budget',
     license='MIT',
-    install_requires=['argparse','boto3','pyyaml','six'],
+    install_requires=['argparse','boto3','configparser','six'],
     entry_points = {
         'console_scripts': [
             'ec2 = ec2.cli:run',

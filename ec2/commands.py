@@ -6,11 +6,68 @@ The number of available commands is kept as succinct as possible intentionally.
 from __future__ import print_function
 
 import argparse
+import configparser
 import datetime
 import boto3
 import yaml
 import sys
 import os
+
+from pprint import pprint
+
+
+def configure(args):
+    """Create a config file in the current working directory.
+    """
+    if args.create:
+        config = configparser.ConfigParser(allow_no_value=True)
+
+        config['AWS'] = {}
+
+        # Secret key name
+        config['AWS']['key_name'] = args.key_name
+
+        # IAM fleet role name
+        iam = boto3.client('iam')
+        response = iam.get_role(RoleName=args.iam_fleet_role_name)
+        iam_fleet_role_arn = response['Role']['Arn']
+        config['AWS']['iam_fleet_role_arn'] = iam_fleet_role_arn
+
+        config['EC2'] = {
+            'snapshot_id': None,
+            'volume_id': None,
+            'volume_attached_to': None,
+            'spot_fleet_id': None,
+        }
+
+        save_config(config, args.config_dir)
+    else:
+        config = load_config(args.config_dir)
+        config_dict = {sec: dict(items) for sec, items in config.items()}
+        pprint(config_dict)
+
+
+def load_config(config_dir):
+    """Load and parse config from a file.
+    """
+    filepath = os.path.join(config_dir, '.ec2.ini')
+    if not os.path.isdir(config_dir):
+        raise ValueError("%s is not an existing directory!" % config_dir)
+    if not os.path.isfile(filepath):
+        raise ValueError("No config file found in %s." % config_dir)
+    config = configparser.ConfigParser(allow_no_value=True)
+    config.read(filepath)
+    return config
+
+
+def save_config(config, config_dir):
+    """Save config to a file.
+    """
+    if not os.path.isdir(config_dir):
+        raise ValueError("%s is not an existing directory!" % config_dir)
+    filepath = os.path.join(config_dir, '.ec2.ini')
+    with open(filepath, 'w') as fp:
+        config.write(fp)
 
 
 def list_available_instances(args):
@@ -44,12 +101,11 @@ def list_available_instances(args):
 def request_spot_fleet(args):
     """Request a new fleet of spot instances.
     """
-    with open('.config.yaml') as fp:
-        config = yaml.load(fp)
+    config = load_config(args.config_dir)
 
-    if config['spot_fleet_id'] is not None:
+    if config['EC2']['spot_fleet_id'] is not None:
         print("There already exists an active spot fleet request according to "
-              "the current config: %s." % config['spot-fleet-request'])
+              "the current config: %s." % config['EC2']['spot-fleet-request'])
         print("Before requesting a new spot fleet, "
               "please cancel the existing one to avoid a budget leak.")
         return
@@ -85,20 +141,18 @@ def request_spot_fleet(args):
 
     ec2 = boto3.client('ec2')
     response = ec2.request_spot_fleet(SpotFleetRequestConfig=request_config)
-    config['spot_fleet_id'] = response['SpotFleetRequestId']
-    print("Requested a spot fleet:", config['spot_fleet_id'])
+    config['EC2']['spot_fleet_id'] = response['SpotFleetRequestId']
+    print("Requested a spot fleet:", response['SpotFleetRequestId'])
 
-    with open('.config.yaml', 'w') as fp:
-        yaml.dump(config, fp, default_flow_style=False)
+    save_config(config, args.config_dir)
 
 
 def cancel_spot_fleet(args):
     """Cancel the fleet of spot instances.
     """
-    with open('.config.yaml') as fp:
-        config = yaml.load(fp)
+    config = load_config(args.config_dir)
 
-    spot_fleet_id = config['spot_fleet_id']
+    spot_fleet_id = config['EC2']['spot_fleet_id']
     if spot_fleet_id is None:
         print("No active spot fleet requests. Nothing to cancel.")
         return
@@ -109,17 +163,15 @@ def cancel_spot_fleet(args):
         TerminateInstances=True)
     print("Done.")
 
-    config['spot_fleet_id'] = None
-    with open('.config.yaml', 'w') as fp:
-        yaml.dump(config, fp, default_flow_style=False)
+    config['EC2']['spot_fleet_id'] = None
+    save_config(config, args.config_dir)
 
 
 def restore_data_volume(args):
     """Restore an EBS data volume from a snapshot. Deletes the snapshot.
     """
-    with open('.config.yaml') as fp:
-        config = yaml.load(fp)
-    snapshot_id = config['snapshot_id']
+    config = load_config(args.config_dir)
+    snapshot_id = config['EC2']['snapshot_id']
 
     if snapshot_id is None:
         print("Cannot restore a volume. No data snapshots available.")
@@ -133,26 +185,24 @@ def restore_data_volume(args):
                                  AvailabilityZone=args.availability_zone,
                                  VolumeType=args.volume_type)
     volume_id = response['VolumeId']
-    config['volume_id'] = volume_id
+    config['EC2']['volume_id'] = volume_id
     ec2.get_waiter('volume_available').wait(VolumeIds=[volume_id])
     print("Done.")
 
     print("Deleting the snapshot...", end="")
     sys.stdout.flush()
     response = ec2.delete_snapshot(SnapshotId=snapshot_id)
-    config['snapshot_id'] = None
+    config['EC2']['snapshot_id'] = None
     print("Done.")
 
-    with open('.config.yaml', 'w') as fp:
-        yaml.dump(config, fp, default_flow_style=False)
+    save_config(config, args.config_dir)
 
 
 def archive_data_volume(args):
     """Create a snapshot from the data volume. Deletes the volume.
     """
-    with open('.config.yaml') as fp:
-        config = yaml.load(fp)
-    volume_id = config['volume_id']
+    config = load_config(args.config_dir)
+    volume_id = config['EC2']['volume_id']
 
     if volume_id is None:
         print("Cannot create a snapshot. No data volumes available.")
@@ -165,27 +215,25 @@ def archive_data_volume(args):
     response = ec2.create_snapshot(VolumeId=volume_id,
                                    Description="The volume with data.")
     snapshot_id = response['SnapshotId']
-    config['snapshot_id'] = snapshot_id
+    config['EC2']['snapshot_id'] = snapshot_id
     ec2.get_waiter('snapshot_completed').wait(SnapshotIds=[snapshot_id])
     print("Done.")
 
     print("Deleting the volume...", end="")
     sys.stdout.flush()
     ec2.delete_volume(VolumeId=volume_id)
-    config['volume_id'] = None
+    config['EC2']['volume_id'] = None
     print("Done.")
 
-    with open('.config.yaml', 'w') as fp:
-        yaml.dump(config, fp, default_flow_style=False)
+    save_config(config, args.config_dir)
 
 
 def attach_data_volume(args):
     """Attach the data volume to an instance.
     """
-    with open('.config.yaml') as fp:
-        config = yaml.load(fp)
-    volume_id = config['volume_id']
-    attached_to = config['volume_attached_to']
+    config = load_config(args.config_dir)
+    volume_id = config['EC2']['volume_id']
+    attached_to = config['EC2']['volume_attached_to']
 
     if volume_id is None:
         sys.stdout.write(
@@ -205,8 +253,7 @@ def attach_data_volume(args):
     response = client.attach_volume(VolumeId=volume_id,
                                     InstanceId=args.instance_id,
                                     Device='xvdh')
-    config['volume_attached_to'] = args.instance_id
+    config['EC2']['volume_attached_to'] = args.instance_id
     sys.stdout.write("Done.\n")
 
-    with open('.config.yaml', 'w') as fp:
-        yaml.dump(config, fp, default_flow_style=False)
+    save_config(config, args.config_dir)

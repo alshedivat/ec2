@@ -4,6 +4,7 @@ A minimalistic command line interface for EC2.
 from __future__ import absolute_import
 
 import argparse
+import os
 
 from . import commands as cmd
 
@@ -12,18 +13,32 @@ def parse_args():
     parser = argparse.ArgumentParser(
         prog="ec2",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument("--config_dir", default=".",
+                        help="path to a folder that contains ec2 config")
     commands = parser.add_subparsers(title="ec2 commands")
+
+    # Configuration
+    config = commands.add_parser(
+        "config", help="operations for configuration")
+    config.set_defaults(cmd=cmd.configure)
+    config.add_argument("--create", action="store_true",
+                        help="whether to create a new config file")
+    config.add_argument("-k", "--key_name", default="default",
+                        help="the name of the secrete key to use with ec2")
+    config.add_argument("-iam", "--iam_fleet_role_name", metavar="IAM",
+                        default="aws-ec2-spot-fleet-role",
+                        help="IAM fleet role name")
 
     # Listing instances
     list_instances = commands.add_parser(
         "list", help="list available instances")
+    list_instances.set_defaults(cmd=cmd.list_available_instances)
     list_instances.add_argument("-t", "--instance_type", metavar="TYPE",
                                 help="type of the instances to be listed",
                                 default=None)
     list_instances.add_argument("-s", "--instance_state", metavar="STATE",
                                 help="state of the instances to be listed",
                                 default="running")
-    list_instances.set_defaults(cmd=cmd.list_available_instances)
 
     # Operations with spot fleets
     fleet = commands.add_parser(
@@ -92,6 +107,7 @@ def parse_args():
 
 def run():
     args = parse_args()
+    args.config_dir = os.path.abspath(args.config_dir)
     args.cmd(args)
 
 
