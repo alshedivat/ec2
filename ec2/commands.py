@@ -124,13 +124,13 @@ def request_spot_fleet(args):
         'IamFleetRole': iam_fleet_role_arn,
         'SpotPrice': args.spot_price,
         'TargetCapacity': args.target_capacity,
-        'ValidUntil': args.valid_until,
+        'ValidUntil': valid_until,
         'TerminateInstancesWithExpiration': True,
         'LaunchSpecifications': [
             {
                 'ImageId': args.image_id,
                 'InstanceType': args.instance_type,
-                'KeyName': args.key_name,
+                'KeyName': config['AWS']['key_name'],
                 'Placement': {
                     'AvailabilityZone': args.availability_zone,
                 },
