@@ -258,7 +258,7 @@ def attach_data_volume(args):
     sys.stdout.flush()
     response = ec2.attach_volume(VolumeId=volume_id,
                                  InstanceId=args.instance_id,
-                                 Device='xvdh')
+                                 Device=args.device)
     config['EC2']['volume_attached_to'] = args.instance_id
     print("Done.")
 
