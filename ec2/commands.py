@@ -188,8 +188,8 @@ def restore_data_volume(args):
                                  AvailabilityZone=args.availability_zone,
                                  VolumeType=args.volume_type)
     volume_id = response['VolumeId']
-    config['EC2']['volume_id'] = volume_id
     ec2.get_waiter('volume_available').wait(VolumeIds=[volume_id])
+    config['EC2']['volume_id'] = volume_id
     print("Done.")
 
     print("Deleting the snapshot...", end="")
@@ -218,13 +218,14 @@ def archive_data_volume(args):
     response = ec2.create_snapshot(VolumeId=volume_id,
                                    Description="The volume with data.")
     snapshot_id = response['SnapshotId']
-    config['EC2']['snapshot_id'] = snapshot_id
     ec2.get_waiter('snapshot_completed').wait(SnapshotIds=[snapshot_id])
+    config['EC2']['snapshot_id'] = snapshot_id
     print("Done.")
 
     print("Deleting the volume...", end="")
     sys.stdout.flush()
     ec2.delete_volume(VolumeId=volume_id)
+    ec2.get_waiter('volume_deleted').wait(VolumeIds=[volume_id])
     config['EC2']['volume_id'] = None
     print("Done.")
 
@@ -259,6 +260,7 @@ def attach_data_volume(args):
     response = ec2.attach_volume(VolumeId=volume_id,
                                  InstanceId=args.instance_id,
                                  Device=args.device)
+    ec2.get_waiter('volume_in_use').wait(VolumeIds=[volume_id])
     config['EC2']['volume_attached_to'] = args.instance_id
     print("Done.")
 
@@ -286,6 +288,7 @@ def detach_data_volume(args):
           (volume_id, attached_to), end="")
     sys.stdout.flush()
     response = ec2.detach_volume(VolumeId=volume_id, Force=args.force)
+    ec2.get_waiter('volume_available').wait(VolumeIds=[volume_id])
     config['EC2']['volume_attached_to'] = None
     print("Done.")
 
