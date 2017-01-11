@@ -160,6 +160,14 @@ def cancel_spot_fleet(args):
 
     ec2 = boto3.client('ec2')
 
+    # Make sure the volume is marked detached if necessary
+    response = ec2.describe_spot_fleet_instances(
+        SpotFleetRequestId=spot_fleet_id)
+    instances_to_be_terminated = set(
+        [instance['InstanceId'] for instance in response['ActiveInstances']])
+    if config['EC2']['volume_attached_to'] in instances_to_be_terminated:
+        config['EC2']['volume_attached_to'] = None
+
     print("Canceling spot fleet request %s..." % spot_fleet_id, end="")
     ec2.cancel_spot_fleet_requests(
         SpotFleetRequestIds=[spot_fleet_id],
