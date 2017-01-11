@@ -108,7 +108,7 @@ def parse_args():
         "-i", "--instance_id", required=True,
         help="instance id to which the volume is attached")
     volume_attach.add_argument(
-        "-d", "--device", default="/dev/xvdh",
+        "-d", "--device", default="/dev/xvdf",
         help="attached volume will be attached as the specified device")
 
     volume_detach = volume_subparsers.add_parser(
