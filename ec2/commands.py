@@ -36,8 +36,10 @@ def configure(args):
         config['EC2'] = {
             'snapshot_id': None,
             'volume_id': None,
+            'volume_zone': None,
             'volume_attached_to': None,
             'spot_fleet_id': None,
+            'spot_fleet_zone': None,
         }
 
         save_config(config, args.config_dir)
@@ -172,6 +174,7 @@ def request_spot_fleet(args):
     ec2 = boto3.client('ec2')
     response = ec2.request_spot_fleet(SpotFleetRequestConfig=request_config)
     config['EC2']['spot_fleet_id'] = response['SpotFleetRequestId']
+    config['EC2']['spot_fleet_zone'] = args.availability_zone
     print("Requested a spot fleet:", response['SpotFleetRequestId'])
 
     save_config(config, args.config_dir)
@@ -204,6 +207,7 @@ def cancel_spot_fleet(args):
     print("Done.")
 
     config['EC2']['spot_fleet_id'] = None
+    config['EC2']['spot_fleet_zone'] = None
     save_config(config, args.config_dir)
 
 
@@ -227,6 +231,7 @@ def restore_data_volume(args):
     volume_id = response['VolumeId']
     ec2.get_waiter('volume_available').wait(VolumeIds=[volume_id])
     config['EC2']['volume_id'] = volume_id
+    config['EC2']['volume_zone'] = args.availability_zone
     print("Done.")
 
     print("Deleting the snapshot...", end="")
@@ -264,6 +269,7 @@ def archive_data_volume(args):
     ec2.delete_volume(VolumeId=volume_id)
     ec2.get_waiter('volume_deleted').wait(VolumeIds=[volume_id])
     config['EC2']['volume_id'] = None
+    config['EC2']['volume_zone'] = None
     print("Done.")
 
     save_config(config, args.config_dir)
