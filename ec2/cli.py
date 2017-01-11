@@ -48,6 +48,23 @@ def parse_args():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     fleet_subparsers = fleet.add_subparsers(title="spot fleet commands")
 
+    spot_price_history = fleet_subparsers.add_parser(
+        "price", help="display spot price history",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    spot_price_history.set_defaults(cmd=cmd.display_spot_price_history)
+    spot_price_history.add_argument(
+        "-n", "--last_to_display", type=int, default=10,
+        help="number of last prices to display")
+    spot_price_history.add_argument(
+        "-d", "--days", type=int, default=1,
+        help="how many days in the past to consider")
+    spot_price_history.add_argument(
+        "-t", "--instance_type", metavar="TYPE", default="p2.xlarge",
+        help="type of the requested instances")
+    spot_price_history.add_argument(
+        "-z", "--availability_zone", metavar="ZONE", default="",
+        help="availability zone of the requested instances")
+
     spot_fleet_request = fleet_subparsers.add_parser(
         "request", help="request a spot fleet",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -66,9 +83,6 @@ def parse_args():
     spot_fleet_request.add_argument(
         "-d", "--valid_days", type=int, default=30,
         help="the number of days the request is valid (canceled afterwards)")
-    spot_fleet_request.add_argument(
-        "-iam", "--iam_fleet_role_name", metavar="IAM",
-        default="aws-ec2-spot-fleet-role", help="IAM fleet role name")
     spot_fleet_request.add_argument(
         "-z", "--availability_zone", metavar="ZONE", default="us-east-1a",
         help="availability zone of the requested instances")

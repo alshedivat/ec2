@@ -99,6 +99,39 @@ def list_available_instances(args):
     print('-' * 80)
 
 
+def display_spot_price_history(args):
+    """Display the spot price history.
+    """
+    current_datetime = datetime.datetime.utcnow()
+    start_datetime = current_datetime - datetime.timedelta(days=args.days)
+
+    ec2 = boto3.client('ec2')
+    response = ec2.describe_spot_price_history(
+        StartTime=start_datetime,
+        InstanceTypes=[args.instance_type],
+        AvailabilityZone=args.availability_zone,
+        ProductDescriptions=['Linux/UNIX'])
+
+    prices_per_zone = {}
+    for price in response['SpotPriceHistory']:
+        try:
+            prices_per_zone[price['AvailabilityZone']].append(
+                (price['Timestamp'], price['SpotPrice'])
+            )
+        except:
+            prices_per_zone[price['AvailabilityZone']] = [
+                (price['Timestamp'], price['SpotPrice'])
+            ]
+
+    print("\nLast %d prices for %s instances:" %
+          (args.last_to_display, args.instance_type))
+    for z, prices in sorted(prices_per_zone.items()):
+        print("\n%s %s %s" % ('-' * 3, z, '-' * 35))
+        for p in sorted(prices)[-args.last_to_display:]:
+            print("%s UTC\t-\t%s" % (p[0], p[1]))
+    print('-' * 50 + '\n')
+
+
 def request_spot_fleet(args):
     """Request a new fleet of spot instances.
     """
@@ -111,17 +144,13 @@ def request_spot_fleet(args):
               "please cancel the existing one to avoid a budget leak.")
         return
 
-    iam = boto3.client('iam')
-    response = iam.get_role(RoleName=args.iam_fleet_role_name)
-    iam_fleet_role_arn = response['Role']['Arn']
-
     valid_from = datetime.datetime.utcnow()
     valid_until = valid_from + datetime.timedelta(days=args.valid_days)
     year, month, day = valid_until.year, valid_until.month, valid_until.day
     valid_until = datetime.datetime(year, month, day)
 
     request_config = {
-        'IamFleetRole': iam_fleet_role_arn,
+        'IamFleetRole': config['AWS']['iam_fleet_role_arn'],
         'SpotPrice': args.spot_price,
         'TargetCapacity': args.target_capacity,
         'ValidUntil': valid_until,
