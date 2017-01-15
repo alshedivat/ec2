@@ -1,2 +1,2 @@
 #!/bin/bash
-rsync -azP ./ AWS-compute:dev/dcim
+rsync -azP --exclude-from='.sync-exclude' ./ AWS-compute:dev/$(basename "$PWD")

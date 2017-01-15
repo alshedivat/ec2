@@ -8,11 +8,11 @@ setup(
     name='ec2',
     version='0.1',
     packages=find_packages(),
-    description='A minimalistic CLI for AWS EC2 on a budget.',
+    description='A minimalistic CLI for managing AWS EC2 projects.',
     long_description=read('README.md'),
     author='Maruan Al-Shedivat',
     author_email='maruan@alshedivat.com',
-    url='https://github.com/alshedivat/aws-ec2-on-a-budget',
+    url='https://github.com/alshedivat/ec2',
     license='MIT',
     install_requires=['argparse','boto3','configparser','six'],
     entry_points = {
