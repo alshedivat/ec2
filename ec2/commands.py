@@ -20,6 +20,7 @@ def configure(args):
     """Create a config file in the current working directory.
     """
     if args.create:
+        print("Creating new config in %s..." % args.config_dir, end="")
         config = configparser.ConfigParser(allow_no_value=True)
 
         config['AWS'] = {}
@@ -43,6 +44,45 @@ def configure(args):
         }
 
         save_config(config, args.config_dir)
+        print("Done.")
+
+    elif args.refresh:
+        print("Refreshing config in %s..." % args.config_dir, end="")
+        config = load_config(args.config_dir)
+        ec2 = boto3.client('ec2')
+
+        # Check on the spot fleet
+        if config['EC2']['spot_fleet_id'] is not None:
+            response = ec2.describe_spot_fleet_instances(
+                SpotFleetRequestId=config['EC2']['spot_fleet_id'])
+            if not response['ActiveInstances']:
+                config['EC2']['spot_fleet_id'] = None
+                config['EC2']['spot_fleet_zone'] = None
+
+        # Check on the volume
+        if config['EC2']['volume_id'] is not None:
+            response = ec2.describe_volumes(
+                VolumeIds=[config['EC2']['volume_id']])
+            if (not response['Volumes'] or
+                (response['Volumes'][0]['State'] != 'available' and
+                 response['Volumes'][0]['State'] != 'in-use')):
+                config['EC2']['volume_id'] = None
+                config['EC2']['volume_zone'] = None
+
+        # Check  on the instance the volume is attached to
+        if config['EC2']['volume_attached_to'] is not None:
+            response = ec2.describe_instance_status(
+                InstanceIds=[config['EC2']['volume_attached_to']])
+            if not response['InstanceStatuses']:
+                config['EC2']['volume_attached_to'] = None
+            else:
+                instance_status = response['InstanceStatuses'][0]
+                if instance_status['InstanceState']['Name'] != 'running':
+                    config['EC2']['volume_attached_to'] = None
+
+        save_config(config, args.config_dir)
+        print("Done.")
+
     else:
         filepath = os.path.join(args.config_dir, '.ec2.ini')
         with open(filepath) as fp:

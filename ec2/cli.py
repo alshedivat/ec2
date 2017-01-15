@@ -12,6 +12,7 @@ from . import commands as cmd
 def parse_args():
     parser = argparse.ArgumentParser(
         prog="ec2",
+        description="A minimalistic CLI to handle AWS EC2 projects.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--config_dir", default=".",
                         help="path to a folder that contains ec2 config")
@@ -19,11 +20,15 @@ def parse_args():
 
     # Configuration
     config = commands.add_parser(
-        "config", help="operations for configuration",
+        "config",
+        description="Create, refresh, or display a config.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     config.set_defaults(cmd=cmd.configure)
-    config.add_argument("--create", action="store_true",
-                        help="whether to create a new config file")
+    change_config = config.add_mutually_exclusive_group()
+    change_config.add_argument("--create", action="store_true",
+                               help="create a new config file")
+    change_config.add_argument("--refresh", action="store_true",
+                               help="refresh the state of config")
     config.add_argument("-k", "--key_name", default="default",
                         help="the name of the secrete key to use with ec2")
     config.add_argument("-iam", "--iam_fleet_role_name", metavar="IAM",
@@ -32,7 +37,8 @@ def parse_args():
 
     # Listing instances
     list_instances = commands.add_parser(
-        "list", help="list available instances",
+        "list",
+        description="List available instances.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     list_instances.set_defaults(cmd=cmd.list_available_instances)
     list_instances.add_argument("-t", "--instance_type", metavar="TYPE",
@@ -44,12 +50,13 @@ def parse_args():
 
     # Operations with spot fleets
     fleet = commands.add_parser(
-        "fleet", help="operations with spot fleets",
+        "fleet",
+        description="Operations with spot fleets.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     fleet_subparsers = fleet.add_subparsers(title="spot fleet commands")
 
     spot_price_history = fleet_subparsers.add_parser(
-        "price", help="display spot price history",
+        "price", description="display spot price history",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     spot_price_history.set_defaults(cmd=cmd.display_spot_price_history)
     spot_price_history.add_argument(
@@ -66,7 +73,8 @@ def parse_args():
         help="availability zone of the requested instances")
 
     spot_fleet_request = fleet_subparsers.add_parser(
-        "request", help="request a spot fleet",
+        "request",
+        description="Request a spot fleet.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     spot_fleet_request.set_defaults(cmd=cmd.request_spot_fleet)
     spot_fleet_request.add_argument(
@@ -88,18 +96,21 @@ def parse_args():
         help="availability zone of the requested instances")
 
     spot_fleet_cancel = fleet_subparsers.add_parser(
-        "cancel", help="cancel a spot fleet request",
+        "cancel",
+        description="Cancel a spot fleet request.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     spot_fleet_cancel.set_defaults(cmd=cmd.cancel_spot_fleet)
 
     # Operations with volumes
     volume = commands.add_parser(
-        "volume", help="operations with volumes",
+        "volume",
+        description="Operations with volumes.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     volume_subparsers = volume.add_subparsers(title="volume commands")
 
     volume_restore = volume_subparsers.add_parser(
-        "restore", help="restore volume from a snapshot",
+        "restore",
+        description="Restore volume from the snapshot.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     volume_restore.set_defaults(cmd=cmd.restore_data_volume)
     volume_restore.add_argument(
@@ -110,12 +121,14 @@ def parse_args():
         help="availability zone of the requested instances")
 
     volume_archive = volume_subparsers.add_parser(
-        "archive", help="archive volume to a snapshot",
+        "archive",
+        description="Archive volume to a snapshot.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     volume_archive.set_defaults(cmd=cmd.archive_data_volume)
 
     volume_attach = volume_subparsers.add_parser(
-        "attach", help="attach volume to an instance",
+        "attach",
+        description="Attach volume to an instance.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     volume_attach.set_defaults(cmd=cmd.attach_data_volume)
     volume_attach.add_argument(
@@ -126,7 +139,8 @@ def parse_args():
         help="attached volume will be attached as the specified device")
 
     volume_detach = volume_subparsers.add_parser(
-        "detach", help="detach the volume",
+        "detach",
+        description="Detach the volume.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     volume_detach.set_defaults(cmd=cmd.detach_data_volume)
     volume_detach.add_argument(
