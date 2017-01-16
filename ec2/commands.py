@@ -137,6 +137,7 @@ def list_available_instances(args):
         print('InstanceId:', instance['InstanceId'])
         print('InstanceType:', instance['InstanceType'])
         print('PublicDnsName:', instance['PublicDnsName'])
+        print('PublicIpAddress:', instance['PublicIpAddress'])
         sys.stdout.flush()
     print('-' * 80)
 
