@@ -56,7 +56,7 @@ spot_fleet_id
 volume_id
 ```
 
-### Working spot fleets
+### Working with spot fleets
 Suppose, we would like to request a spot fleet of `p2.xlarge` instances.
 You can decide in which zone to request the fleet by requesting the latest prices for the spot instances in each zone:
 
