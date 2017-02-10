@@ -182,7 +182,7 @@ def request_spot_fleet(args):
 
     if config['EC2']['spot_fleet_id'] is not None:
         print("There already exists an active spot fleet request according to "
-              "the current config: %s." % config['EC2']['spot-fleet-request'])
+              "the current config: %s." % config['EC2']['spot_fleet_id'])
         print("Before requesting a new spot fleet, "
               "please cancel the existing one to avoid a budget leak.")
         return
