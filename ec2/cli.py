@@ -51,11 +51,11 @@ def parse_args():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     list_subparsers = list_resources.add_subparsers(title="list commands")
 
-    list_amis = list_subparsers.add_parser(
-        "amis",
+    list_images = list_subparsers.add_parser(
+        "images",
         description="List personal AMIs.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    list_amis.set_defaults(cmd=cmd.list_amis)
+    list_images.set_defaults(cmd=cmd.list_images)
 
     list_instances = list_subparsers.add_parser(
         "instances",
@@ -157,7 +157,13 @@ def parse_args():
         help="Performance mode of the file system.")
     efs_create.add_argument(
         "--mount_target_zones", nargs="+",
-        default=["us-east-1a", "us-east-1b", "us-east-1c", "us-east-1d"],
+        default=[
+            "us-east-1a",
+            "us-east-1b",
+            "us-east-1c",
+            "us-east-1d",
+            "us-east-1d",
+        ],
         help="Availability zones where to create mount targets.")
 
     efs_delete = efs_subparsers.add_parser(

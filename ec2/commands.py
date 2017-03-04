@@ -92,7 +92,7 @@ def refresh(args):
     print("Done.")
 
 
-def list_amis(args):
+def list_images(args):
     """List personal AMIs."""
     response = _EC2.describe_images(Owners=['self'])
 
@@ -205,7 +205,7 @@ def display_spot_price_history(args):
             prices_per_zone[price['AvailabilityZone']].append(
                 (price['Timestamp'], price['SpotPrice'])
             )
-        except AttributeError:
+        except KeyError:
             prices_per_zone[price['AvailabilityZone']] = [
                 (price['Timestamp'], price['SpotPrice'])
             ]
@@ -216,7 +216,7 @@ def display_spot_price_history(args):
         print("\n%s %s %s" % ('-' * 3, z, '-' * 35))
         for p in sorted(prices)[-args.last_to_display:]:
             print("%s UTC\t-\t%s" % (p[0], p[1]))
-    print('-' * 50 + '\n')
+    print()
 
 
 def request_spot_fleet(args):
