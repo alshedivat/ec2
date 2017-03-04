@@ -19,28 +19,52 @@ def parse_args():
     commands = parser.add_subparsers(title="ec2 commands")
 
     # Configuration
-    config = commands.add_parser(
-        "config",
-        description="Create, refresh, or display a config.",
+    show = commands.add_parser(
+        "show",
+        description="Show configuration of the current project.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    config.set_defaults(cmd=cmd.configure)
-    change_config = config.add_mutually_exclusive_group()
-    change_config.add_argument("--create", action="store_true",
-                               help="create a new config file")
-    change_config.add_argument("--refresh", action="store_true",
-                               help="refresh the state of config")
-    config.add_argument("-k", "--key_name", default="default",
-                        help="the name of the secrete key to use with ec2")
-    config.add_argument("-iam", "--iam_fleet_role_name", metavar="IAM",
-                        default="aws-ec2-spot-fleet-role",
-                        help="IAM fleet role name")
+    show.set_defaults(cmd=cmd.show)
 
-    # Listing instances
-    list_instances = commands.add_parser(
+    configure = commands.add_parser(
+        "configure",
+        description="Configure ec2 for the current project.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    configure.set_defaults(cmd=cmd.configure)
+    configure.add_argument("-k", "--key_name", default="default",
+                           help="the name of the secrete key to use with ec2")
+    configure.add_argument("-r", "--region", default="us-east-1",
+                           help="AWS region")
+    configure.add_argument("-iam", "--iam_fleet_role_name", metavar="IAM",
+                           default="aws-ec2-spot-fleet-role",
+                           help="IAM fleet role name")
+
+    refresh = commands.add_parser(
+        "refresh",
+        description="Refresh ec2 configuration.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    refresh.set_defaults(cmd=cmd.refresh)
+
+    # Listing resources (AMIs, instances, snapshots, EFSs)
+    list_resources = commands.add_parser(
         "list",
+        description="List available resources.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    list_subparsers = list_resources.add_subparsers(title="list commands")
+
+    list_images = list_subparsers.add_parser(
+        "images",
+        description="List personal AMIs.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    list_images.set_defaults(cmd=cmd.list_images)
+
+    list_instances = list_subparsers.add_parser(
+        "instances",
         description="List available instances.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    list_instances.set_defaults(cmd=cmd.list_available_instances)
+    list_instances.set_defaults(cmd=cmd.list_instances)
+    list_instances.add_argument("-a", "--all",
+                                help="whether to list all available instances",
+                                action="store_true")
     list_instances.add_argument("-t", "--instance_type", metavar="TYPE",
                                 help="type of the instances to be listed",
                                 default=None)
@@ -48,7 +72,19 @@ def parse_args():
                                 help="state of the instances to be listed",
                                 default="running")
 
-    # Operations with spot fleets
+    list_efs = list_subparsers.add_parser(
+        "efs",
+        description="List available elastic file systems (EFS).",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    list_efs.set_defaults(cmd=cmd.list_efs)
+
+    list_snapshots = list_subparsers.add_parser(
+        "snapshots",
+        description="List available snapshots.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    list_snapshots.set_defaults(cmd=cmd.list_snapshots)
+
+    # Spot fleets
     fleet = commands.add_parser(
         "fleet",
         description="Operations with spot fleets.",
@@ -60,7 +96,7 @@ def parse_args():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     spot_price_history.set_defaults(cmd=cmd.display_spot_price_history)
     spot_price_history.add_argument(
-        "-n", "--last_to_display", type=int, default=10,
+        "-n", "--last_to_display", type=int, default=5,
         help="number of last prices to display")
     spot_price_history.add_argument(
         "-d", "--days", type=int, default=1,
@@ -101,60 +137,67 @@ def parse_args():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     spot_fleet_cancel.set_defaults(cmd=cmd.cancel_spot_fleet)
 
-    # Operations with volumes
-    volume = commands.add_parser(
-        "volume",
-        description="Operations with volumes.",
+    # EFS
+    efs = commands.add_parser(
+        "efs",
+        description="Operations with elastic file systems.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    volume_subparsers = volume.add_subparsers(title="volume commands")
+    efs_subparsers = efs.add_subparsers(title="efs commands")
 
-    volume_restore = volume_subparsers.add_parser(
-        "restore",
-        description="Restore volume from the snapshot.",
+    efs_create = efs_subparsers.add_parser(
+        "create",
+        description="Create an EFS.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    volume_restore.set_defaults(cmd=cmd.restore_data_volume)
-    volume_restore.add_argument(
-        "-t", "--volume_type", metavar="TYPE", default="gp2",
-        help="type of the requested volume")
-    volume_restore.add_argument(
-        "-z", "--availability_zone", metavar="ZONE", default="us-east-1a",
-        help="availability zone of the requested instances")
+    efs_create.set_defaults(cmd=cmd.create_efs)
+    efs_create.add_argument(
+        "--creation_token", default="data",
+        help="Creation token: string of up to 64 ASCII characters.")
+    efs_create.add_argument(
+        "--performance_mode", default="generalPurpose",
+        help="Performance mode of the file system.")
+    efs_create.add_argument(
+        "--mount_target_zones", nargs="+",
+        default=[
+            "us-east-1a",
+            "us-east-1b",
+            "us-east-1c",
+            "us-east-1d",
+            "us-east-1d",
+        ],
+        help="Availability zones where to create mount targets.")
 
-    volume_archive = volume_subparsers.add_parser(
-        "archive",
-        description="Archive volume to a snapshot.",
+    efs_delete = efs_subparsers.add_parser(
+        "delete",
+        description="Delete an EFS.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    volume_archive.set_defaults(cmd=cmd.archive_data_volume)
+    efs_delete.set_defaults(cmd=cmd.delete_efs)
 
-    volume_attach = volume_subparsers.add_parser(
-        "attach",
-        description="Attach volume to an instance.",
+    efs_mount = efs_subparsers.add_parser(
+        "mount",
+        description="Mount EFS to specified instances.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    volume_attach.set_defaults(cmd=cmd.attach_data_volume)
-    volume_attach.add_argument(
-        "-i", "--instance_id", required=True,
-        help="instance id to which the volume is attached")
-    volume_attach.add_argument(
-        "-d", "--device", default="/dev/xvdf",
-        help="attached volume will be attached as the specified device")
+    efs_mount.set_defaults(cmd=cmd.mount_efs)
+    efs_mount.add_argument(
+        "-i", "--instances", nargs="+", default=[],
+        help="list of instances to mount the EFS to.")
+    efs_mount.add_argument(
+        "--spot_fleet", action="store_true",
+        help="whether to try to mount EFS to the spot fleet's instances.")
 
-    volume_detach = volume_subparsers.add_parser(
-        "detach",
-        description="Detach the volume.",
+    efs_umount = efs_subparsers.add_parser(
+        "umount",
+        description="Unmount EFS from specified instances.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    volume_detach.set_defaults(cmd=cmd.detach_data_volume)
-    volume_detach.add_argument(
-        "-f", "--force", action="store_true",
-        help="whether to force-detach the volume (data loss may occur)")
+    efs_umount.set_defaults(cmd=cmd.umount_efs)
+    efs_umount.add_argument(
+        "-i", "--instances", nargs="+", default=[],
+        help="list of instances to unmount the EFS from.")
+    efs_umount.add_argument(
+        "--spot_fleet", action="store_true",
+        help="whether to try to unmount EFS to the spot fleet's instances.")
 
-    return parser.parse_args()
-
-
-def run():
-    args = parse_args()
+    # Parse and post-process args
+    args = parser.parse_args()
     args.config_dir = os.path.abspath(args.config_dir)
-    args.cmd(args)
 
-
-if __name__ == '__main__':
-    run()
+    return args

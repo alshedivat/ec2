@@ -6,7 +6,7 @@ def read(fname):
 
 setup(
     name='ec2',
-    version='0.1',
+    version='0.2.0',
     packages=find_packages(),
     description='A minimalistic CLI for managing AWS EC2 projects.',
     long_description=read('README.md'),
@@ -14,10 +14,10 @@ setup(
     author_email='maruan@alshedivat.com',
     url='https://github.com/alshedivat/ec2',
     license='MIT',
-    install_requires=['argparse','boto3','configparser','six'],
+    install_requires=['argparse', 'boto3', 'fabric', 'six', 'pyyaml'],
     entry_points = {
         'console_scripts': [
-            'ec2 = ec2.cli:run',
+            'ec2 = ec2:run',
         ],
     }
 )
