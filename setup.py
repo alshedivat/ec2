@@ -14,7 +14,7 @@ setup(
     author_email='maruan@alshedivat.com',
     url='https://github.com/alshedivat/ec2',
     license='MIT',
-    install_requires=['argparse', 'boto3', 'configparser', 'six'],
+    install_requires=['argparse', 'boto3', 'configparser', 'fabric', 'six'],
     entry_points = {
         'console_scripts': [
             'ec2 = ec2:run',

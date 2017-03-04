@@ -32,6 +32,8 @@ def parse_args():
     configure.set_defaults(cmd=cmd.configure)
     configure.add_argument("-k", "--key_name", default="default",
                            help="the name of the secrete key to use with ec2")
+    configure.add_argument("-r", "--region", default="us-east-1",
+                           help="AWS region")
     configure.add_argument("-iam", "--iam_fleet_role_name", metavar="IAM",
                            default="aws-ec2-spot-fleet-role",
                            help="IAM fleet role name")
@@ -166,11 +168,27 @@ def parse_args():
 
     efs_mount = efs_subparsers.add_parser(
         "mount",
-        description="Create an EFS.",
+        description="Mount EFS to specified instances.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    efs_mount.set_defaults(cmd=cmd.mount_efs)
     efs_mount.add_argument(
         "-i", "--instances", nargs="+", default=[],
         help="list of instances to mount the EFS to.")
+    efs_mount.add_argument(
+        "--spot_fleet", action="store_true",
+        help="whether to try to mount EFS to the spot fleet's instances.")
+
+    efs_umount = efs_subparsers.add_parser(
+        "umount",
+        description="Unmount EFS from specified instances.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    efs_umount.set_defaults(cmd=cmd.umount_efs)
+    efs_umount.add_argument(
+        "-i", "--instances", nargs="+", default=[],
+        help="list of instances to unmount the EFS from.")
+    efs_umount.add_argument(
+        "--spot_fleet", action="store_true",
+        help="whether to try to unmount EFS to the spot fleet's instances.")
 
     # Parse and post-process args
     args = parser.parse_args()

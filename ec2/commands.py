@@ -46,10 +46,12 @@ def configure(args):
     config = {
         'AWS': {},
         'EC2': {},
+        'EFS': None,
     }
 
     # Secret key name
     config['AWS']['key_name'] = args.key_name
+    config['AWS']['region'] = args.region
 
     # IAM fleet role name
     response = _IAM.get_role(RoleName=args.iam_fleet_role_name)
@@ -58,7 +60,6 @@ def configure(args):
 
     config['EC2'] = {
         'spot_fleet': None,
-        'efs': None,
     }
 
     utils.save_config(config, args.config_dir)
@@ -81,11 +82,11 @@ def refresh(args):
                 response['ActiveInstances']
 
     # Check on the EFS
-    if config['EC2']['efs'] is not None:
+    if config['EFS'] is not None:
         response = _EFS.describe_file_systems(
-            FileSystemId=config['EC2']['efs'])
+            FileSystemId=config['EFS']['id'])
         if not response['FileSystems']:
-            config['EC2']['efs'] = None
+            config['EFS'] = None
 
     utils.save_config(config, args.config_dir)
     print("Done.")
@@ -288,11 +289,11 @@ def create_efs(args):
     """Create an EFS."""
     config = utils.load_config(args.config_dir)
 
-    if config['EC2']['efs'] is not None:
+    if config['EFS'] is not None:
         create_another_efs = utils.yesno(
             "Another EFS is already associated with this project: {}. "
             "Are you sure you want to create another one?"
-            .format(config['EC2']['efs']['id']),
+            .format(config['EFS']['id']),
             default=False)
         if not create_another_efs:
             return
@@ -308,23 +309,24 @@ def create_efs(args):
         response = _EFS.describe_file_systems(
             CreationToken=args.creation_token)
         response = response['FileSystems'][0]
-    config['EC2']['efs'] = {
-            'id': response['FileSystemId'],
-            'CreationTime': str(response['CreationTime']),
-            'PerformanceMode': response['PerformanceMode'],
-        }
+    config['EFS'] = {
+        'id': str(response['FileSystemId']),
+        'token': str(response['CreationToken']),
+        'CreationTime': str(response['CreationTime']),
+        'PerformanceMode': str(response['PerformanceMode']),
+    }
 
     # It seems like EFS doesn't have waiters (yet?)
     # We need to have EFS available before creating mount targets...
     request_callback = lambda : \
         _EFS.describe_file_systems(
-            FileSystemId=config['EC2']['efs']['id'])['FileSystems'][0]
+            FileSystemId=config['EFS']['id'])['FileSystems'][0]
     condition_callback = lambda response: \
         response['LifeCycleState'] != 'available'
     utils.wait(request_callback, condition_callback, sleep_time=3.0)
 
     print("Creating mount targets...")
-    config['EC2']['efs']['mount_targets'] = {}
+    config['EFS']['mount_targets'] = {}
     response = _EC2.describe_subnets(
         Filters=[
             {
@@ -339,26 +341,26 @@ def create_efs(args):
 
     # Read the existing mount targets
     response = _EFS.describe_mount_targets(
-        FileSystemId=config['EC2']['efs']['id'])
+        FileSystemId=config['EFS']['id'])
     for mount_target in response['MountTargets']:
         if mount_target['SubnetId'] in subnets:
             availability_zone = subnets[mount_target['SubnetId']]
-            config['EC2']['efs']['mount_targets'][availability_zone] = \
-                mount_target['MountTargetId']
+            config['EFS']['mount_targets'][availability_zone] = \
+                str(mount_target['MountTargetId'])
             print("...in {} - already exists.".format(availability_zone))
             utils.STDOUT.flush()
 
     # Create mount targets (if necessary)
     for subnet_id, availability_zone in subnets.iteritems():
-        if availability_zone in config['EC2']['efs']['mount_targets']:
+        if availability_zone in config['EFS']['mount_targets']:
             continue
         print("...in {} - ".format(availability_zone), end="")
         utils.STDOUT.flush()
         response = _EFS.create_mount_target(
-            FileSystemId=config['EC2']['efs']['id'],
+            FileSystemId=config['EFS']['id'],
             SubnetId=subnet['SubnetId'])
-        config['EC2']['efs']['mount_targets'][availability_zone] = \
-            response['MountTargetId']
+        config['EFS']['mount_targets'][availability_zone] = \
+            str(response['MountTargetId'])
         # Wait on mount target being created...
         request_callback = lambda : \
             _EFS.describe_mount_targets(
@@ -375,11 +377,11 @@ def create_efs(args):
 def delete_efs(args):
     """Delete EFS."""
     config = utils.load_config(args.config_dir)
-    if config['EC2']['efs'] is None:
+    if config['EFS'] is None:
         print("No EFS is associated with this project. Nothing to delete.")
         return
-    efs_id = config['EC2']['efs']['id']
-    efs_mount_targets = config['EC2']['efs']['mount_targets']
+    efs_id = config['EFS']['id']
+    efs_mount_targets = config['EFS']['mount_targets']
 
     # Delete the EFS
     delete_efs = utils.yesno(
@@ -410,7 +412,7 @@ def delete_efs(args):
         condition_callback = lambda response: \
             response['LifeCycleState'] != 'deleted'
         utils.wait(request_callback, condition_callback, sleep_time=3.0)
-        config['EC2']['efs'] = None
+        config['EFS'] = None
         print("Done.")
     else:
         print("Deletion canceled.")
@@ -420,4 +422,94 @@ def delete_efs(args):
 
 def mount_efs(args):
     """Mount EFS to specified instances."""
-    # TODO
+    config = utils.load_config(args.config_dir)
+    if config['EFS'] is None:
+        print("No EFS is associated with this project. Nothing to mount.")
+        return
+
+    instance_ids = args.instances
+    if args.spot_fleet:
+        response = _EC2.describe_spot_fleet_instances(
+            SpotFleetRequestId=config['EC2']['spot_fleet']['id'])
+        instance_ids += [
+            instance['InstanceId'] for instance in response['ActiveInstances']
+        ]
+
+    response = _EC2.describe_instances(
+        InstanceIds=instance_ids,
+        Filters=[
+            {
+                'Name': 'instance-state-name',
+                'Values': ['running'],
+            },
+        ])
+    running_instances = response['Reservations'][0]['Instances']
+    if not running_instances:
+        print("No running instances is available for the given request.")
+        return
+
+    # Construct SSH connection parameters
+    user = 'ubuntu'
+    hosts = [i['PublicDnsName'] for i in running_instances]
+    key_filename = os.path.join(
+        os.path.expandvars("$HOME/.ssh"),
+        "{}.pem".format(config['AWS']['key_name'].lower()))
+
+    # Construct EFS mount command
+    efs_dns_name = "{efs_id}.efs.{aws_region}.amazonaws.com".format(
+        efs_id=config['EFS']['id'],
+        aws_region=config['AWS']['region'])
+    mount_cmd = \
+        "mount -t nfs4 " \
+        "-o nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2 " \
+        "{efs_dns_name}:/ {efs_mount_point}".format(
+            efs_dns_name=efs_dns_name,
+            efs_mount_point=config['EFS']['token'])
+
+    # Mount EFS on each of the instances
+    results = utils.ssh_run(mount_cmd, user, hosts, key_filename)
+    print("Done.")
+
+
+def umount_efs(args):
+    """Unmount EFS from specified instances."""
+    config = utils.load_config(args.config_dir)
+    if config['EFS'] is None:
+        print("No EFS is associated with this project. Nothing to unmount.")
+        return
+
+    instance_ids = args.instances
+    if args.spot_fleet:
+        response = _EC2.describe_spot_fleet_instances(
+            SpotFleetRequestId=config['EC2']['spot_fleet']['id'])
+        instance_ids += [
+            instance['InstanceId'] for instance in response['ActiveInstances']
+        ]
+
+    response = _EC2.describe_instances(
+        InstanceIds=instance_ids,
+        Filters=[
+            {
+                'Name': 'instance-state-name',
+                'Values': ['running'],
+            },
+        ])
+    running_instances = response['Reservations'][0]['Instances']
+    if not running_instances:
+        print("No running instances is available for the given request.")
+        return
+
+    # Construct SSH connection parameters
+    user = 'ubuntu'
+    hosts = [i['PublicDnsName'] for i in running_instances]
+    key_filename = os.path.join(
+        os.path.expandvars("$HOME/.ssh"),
+        "{}.pem".format(config['AWS']['key_name'].lower()))
+
+    # Construct EFS unmount command
+    umount_cmd = "umount {efs_mount_point}".format(
+        efs_mount_point=config['EFS']['token'])
+
+    # Mount EFS on each of the instances
+    results = utils.ssh_run(umount_cmd, user, hosts, key_filename)
+    print("Done.")

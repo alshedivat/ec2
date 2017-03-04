@@ -5,6 +5,10 @@ import yaml
 import getpass as gp
 import logging
 
+from fabric.tasks import execute
+from fabric.api import settings, sudo, run
+from fabric.network import disconnect_all
+
 log = logging.getLogger(__name__)
 
 PY3 = sys.version_info[0] == 3
@@ -76,3 +80,12 @@ def wait(request_callback, condition_callback, sleep_time=5.0):
             response = request_callback()
         except:
             break
+
+
+def ssh_run(command, user, hosts, key_filename):
+    try:
+        with settings(user=user, key_filename=key_filename):
+            results = execute(lambda : sudo(command), hosts=hosts)
+    finally:
+        disconnect_all()
+    return results
