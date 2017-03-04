@@ -3,10 +3,8 @@ Supported commands.
 
 The number of available commands is kept as succinct as possible intentionally.
 """
-from __future__ import print_function
+from __future__ import absolute_import, print_function
 
-import argparse
-import configparser
 import datetime
 import boto3
 import yaml
@@ -15,107 +13,134 @@ import os
 
 from pprint import pprint
 
+from .utils import *
+
+
+# AWS service clients
+_EC2 = boto3.client('ec2')
+_IAM = boto3.client('iam')
+_EFS = boto3.client('efs')
+
+
+def _load_config(config_dir):
+    config_path = os.path.join(config_dir, '.ec2.yaml')
+    if not os.path.isdir(config_dir):
+        print("{}ERROR{}: Directory '{}' does not exist."
+              .format(ERROR_COLOR, RESET_COLOR, config_dir))
+        sys.exit(1)
+    if not os.path.isfile(config_path):
+        print("{}ERROR{}: Cannot find ec2 configuration in '{}'. "
+              "Please run `configure` command in your project directory "
+              "to create a new '.ec2.yaml' config."
+              .format(ERROR_COLOR, RESET_COLOR, config_path))
+        sys.exit(1)
+    with open(config_path) as fp:
+        config = yaml.load(fp)
+    return config
+
+
+def _save_config(config, config_dir):
+    if not os.path.isdir(config_dir):
+        print("{}ERROR{}: Directory '{}' does not exist."
+              .format(ERROR_COLOR, RESET_COLOR, config_dir))
+        sys.exit(1)
+    config_path = os.path.join(config_dir, '.ec2.yaml')
+    with open(config_path, 'w') as fp:
+        yaml.dump(config, fp, default_flow_style=False)
+
+
+def show(args):
+    """Show configuration of the current project."""
+    config = _load_config(args.config_dir)
+    print(yaml.dump(config, default_flow_style=False))
+
 
 def configure(args):
     """Create a config file in the current working directory.
     """
-    if args.create:
-        print("Creating new config in %s..." % args.config_dir, end="")
-        config = configparser.ConfigParser(allow_no_value=True)
+    config_path = os.path.join(args.config_dir, '.ec2.yaml')
+    if os.path.isfile(config_path):
+        overwrite = yesno("Found an existing config in '{}'. "
+                          "Would you like to overwrite?".format(config_path),
+                          default=False)
+        if not overwrite:
+            return
 
-        config['AWS'] = {}
+    print("Initializing ec2 config in '{}'...".format(config_path))
 
-        # Secret key name
-        config['AWS']['key_name'] = args.key_name
+    config = {
+        'AWS': {},
+        'EC2': {},
+    }
 
-        # IAM fleet role name
-        iam = boto3.client('iam')
-        response = iam.get_role(RoleName=args.iam_fleet_role_name)
-        iam_fleet_role_arn = response['Role']['Arn']
-        config['AWS']['iam_fleet_role_arn'] = iam_fleet_role_arn
+    # Secret key name
+    config['AWS']['key_name'] = args.key_name
 
-        config['EC2'] = {
-            'snapshot_id': None,
-            'volume_id': None,
-            'volume_zone': None,
-            'volume_attached_to': None,
-            'spot_fleet_id': None,
-            'spot_fleet_zone': None,
-        }
+    # IAM fleet role name
+    response = _IAM.get_role(RoleName=args.iam_fleet_role_name)
+    iam_fleet_role_arn = response['Role']['Arn']
+    config['AWS']['iam_fleet_role_arn'] = iam_fleet_role_arn
 
-        save_config(config, args.config_dir)
-        print("Done.")
+    config['EC2'] = {
+        'spot_fleet': None,
+        'efs': None,
+    }
 
-    elif args.refresh:
-        print("Refreshing config in %s..." % args.config_dir, end="")
-        config = load_config(args.config_dir)
-        ec2 = boto3.client('ec2')
-
-        # Check on the spot fleet
-        if config['EC2']['spot_fleet_id'] is not None:
-            response = ec2.describe_spot_fleet_instances(
-                SpotFleetRequestId=config['EC2']['spot_fleet_id'])
-            if not response['ActiveInstances']:
-                config['EC2']['spot_fleet_id'] = None
-                config['EC2']['spot_fleet_zone'] = None
-
-        # Check on the volume
-        if config['EC2']['volume_id'] is not None:
-            response = ec2.describe_volumes(
-                VolumeIds=[config['EC2']['volume_id']])
-            if (not response['Volumes'] or
-                (response['Volumes'][0]['State'] != 'available' and
-                 response['Volumes'][0]['State'] != 'in-use')):
-                config['EC2']['volume_id'] = None
-                config['EC2']['volume_zone'] = None
-
-        # Check  on the instance the volume is attached to
-        if config['EC2']['volume_attached_to'] is not None:
-            response = ec2.describe_instance_status(
-                InstanceIds=[config['EC2']['volume_attached_to']])
-            if not response['InstanceStatuses']:
-                config['EC2']['volume_attached_to'] = None
-            else:
-                instance_status = response['InstanceStatuses'][0]
-                if instance_status['InstanceState']['Name'] != 'running':
-                    config['EC2']['volume_attached_to'] = None
-
-        save_config(config, args.config_dir)
-        print("Done.")
-
-    else:
-        filepath = os.path.join(args.config_dir, '.ec2.ini')
-        with open(filepath) as fp:
-            for line in fp.readlines():
-                print(line.strip())
+    _save_config(config, args.config_dir)
+    print("Done.")
 
 
-def load_config(config_dir):
-    """Load and parse config from a file.
-    """
-    filepath = os.path.join(config_dir, '.ec2.ini')
-    if not os.path.isdir(config_dir):
-        raise ValueError("%s is not an existing directory!" % config_dir)
-    if not os.path.isfile(filepath):
-        raise ValueError("No config file found in %s." % config_dir)
-    config = configparser.ConfigParser(allow_no_value=True)
-    config.read(filepath)
-    return config
+def refresh(args):
+    """Refresh config of the current project."""
+    config_path = os.path.join(args.config_dir, '.ec2.yaml')
+    if not os.path.isfile(config_path):
+        print("ec2 has not been configured for the current project. "
+              "Please run `configure` command in your project directory "
+              "to create a new '.ec2.yaml' config.")
+        return
+
+    print("Refreshing config for '{}'...".format(args.config_dir))
+    config = _load_config(args.config_dir)
+
+    # Check on the spot fleet
+    if config['EC2']['spot_fleet'] is not None:
+        response = _EC2.describe_spot_fleet_instances(
+            SpotFleetRequestId=config['EC2']['spot_fleet']['id'])
+        if not response['ActiveInstances']:
+            config['EC2']['spot_fleet'] = None
+        else:
+            config['EC2']['spot_fleet']['instances'] = \
+                response['ActiveInstances']
+
+    # Check on the EFS
+    if config['EC2']['efs'] is not None:
+        response = _EFS.describe_file_systems(
+            FileSystemId=config['EC2']['efs'])
+        if not response['FileSystems']:
+            config['EC2']['efs'] = None
+
+    _save_config(config, args.config_dir)
+    print("Done.")
 
 
-def save_config(config, config_dir):
-    """Save config to a file.
-    """
-    if not os.path.isdir(config_dir):
-        raise ValueError("%s is not an existing directory!" % config_dir)
-    filepath = os.path.join(config_dir, '.ec2.ini')
-    with open(filepath, 'w') as fp:
-        config.write(fp)
+def list_amis(args):
+    """List personal AMIs."""
+    response = _EC2.describe_images(Owners=['self'])
+
+    for ami in response['Images']:
+        print('-' * 80)
+        print('Name:', ami['Name'])
+        print('Description', ami['Description'])
+        print('ImageId:', ami['ImageId'])
+        print('ImageType:', ami['ImageType'])
+        print('CreationDate:', ami['CreationDate'])
+        print('State:', ami['State'])
+        sys.stdout.flush()
+    print('-' * 80)
 
 
-def list_available_instances(args):
-    """List available instances.
-    """
+def list_instances(args):
+    """List available instances."""
     filters = []
     if args.instance_state is not None:
         filters.append({
@@ -127,29 +152,80 @@ def list_available_instances(args):
             'Name': 'instance-type',
             'Values': [args.instance_type]
         })
+    if not args.all:
+        print("Instances used in the current project:")
+        config = _load_config(args.config_dir)
+        if config['EC2']['spot_fleet'] is not None:
+            response = _EC2.describe_spot_fleet_instances(
+                SpotFleetRequestId=config['EC2']['spot_fleet']['id'])
+            spot_instance_request_id = \
+                response['ActiveInstances'][0]['SpotInstanceRequestId']
+            filters.append({
+                'Name': 'spot-instance-request-id',
+                'Values': [spot_instance_request_id],
+            })
+        else:
+            print("No instances are in use.")
+            return
+    else:
+        print("Available instances:")
 
-    ec2 = boto3.client('ec2')
-    response = ec2.describe_instances(Filters=filters)
-
-    for reservation in response['Reservations']:
-        instance = reservation['Instances'][0]
+    response = _EC2.describe_instances(Filters=filters)
+    if not response['Reservations']:
+        print("No available instances.")
+    else:
+        for reservation in response['Reservations']:
+            instance = reservation['Instances'][0]
+            print('-' * 80)
+            print('InstanceId:', instance['InstanceId'])
+            print('InstanceType:', instance['InstanceType'])
+            print('PublicDnsName:', instance['PublicDnsName'])
+            print('PublicIpAddress:', instance['PublicIpAddress'])
+            sys.stdout.flush()
         print('-' * 80)
-        print('InstanceId:', instance['InstanceId'])
-        print('InstanceType:', instance['InstanceType'])
-        print('PublicDnsName:', instance['PublicDnsName'])
-        print('PublicIpAddress:', instance['PublicIpAddress'])
-        sys.stdout.flush()
-    print('-' * 80)
+
+
+def list_snapshots(args):
+    """List available snapshots."""
+    response = _EC2.describe_snapshots(OwnerIds=['self'])
+
+    if not response['Snapshots']:
+        print("No available snapshots.")
+    else:
+        for snapshot in response['Snapshots']:
+            print('-' * 80)
+            print('Description:', snapshot['Description'])
+            print('SnapshotId:', snapshot['SnapshotId'])
+            print('VolumeId:', snapshot['VolumeId'])
+            print('State:', snapshot['State'])
+            sys.stdout.flush()
+        print('-' * 80)
+
+
+def list_efs(args):
+    """List available elastic file systems."""
+    response = _EFS.describe_file_systems()
+
+    if not response['FileSystems']:
+        print("No available EFS.")
+    else:
+        for efs in response['FileSystems']:
+            print('-' * 80)
+            print('Name', efs['Name'])
+            print('FileSystemId:', efs['FileSystemId'])
+            print('CreationTime:', efs['CreationTime'])
+            print('LifeCycleState:', efs['LifeCycleState'])
+            print('NumberOfMountTargets:', efs['NumberOfMountTargets'])
+            sys.stdout.flush()
+        print('-' * 80)
 
 
 def display_spot_price_history(args):
-    """Display the spot price history.
-    """
+    """Display the spot price history."""
     current_datetime = datetime.datetime.utcnow()
     start_datetime = current_datetime - datetime.timedelta(days=args.days)
 
-    ec2 = boto3.client('ec2')
-    response = ec2.describe_spot_price_history(
+    response = _EC2.describe_spot_price_history(
         StartTime=start_datetime,
         InstanceTypes=[args.instance_type],
         AvailabilityZone=args.availability_zone,
@@ -176,17 +252,18 @@ def display_spot_price_history(args):
 
 
 def request_spot_fleet(args):
-    """Request a new fleet of spot instances.
-    """
-    config = load_config(args.config_dir)
+    """Request a new fleet of spot instances."""
+    config = _load_config(args.config_dir)
 
-    if config['EC2']['spot_fleet_id'] is not None:
-        print("There already exists an active spot fleet request according to "
-              "the current config: %s." % config['EC2']['spot_fleet_id'])
-        print("Before requesting a new spot fleet, "
-              "please cancel the existing one to avoid the leak of resources.")
+    if config['EC2']['spot_fleet'] is not None:
+        print("According to the current config, there already exists"
+              "an active spot fleet request: {spot_fleet_id}. "
+              "Before requesting a new spot fleet please cancel the existing "
+              "one to avoid resource leaks."
+              .format(spot_fleet_id=config['EC2']['spot_fleet']['id']))
         return
 
+    # Resolve ValidUntil date
     valid_from = datetime.datetime.utcnow()
     valid_until = valid_from + datetime.timedelta(days=args.valid_days)
     year, month, day = valid_until.year, valid_until.month, valid_until.day
@@ -212,168 +289,101 @@ def request_spot_fleet(args):
         'Type': 'request',
     }
 
-    ec2 = boto3.client('ec2')
-    response = ec2.request_spot_fleet(SpotFleetRequestConfig=request_config)
-    config['EC2']['spot_fleet_id'] = response['SpotFleetRequestId']
-    config['EC2']['spot_fleet_zone'] = args.availability_zone
+    response = _EC2.request_spot_fleet(SpotFleetRequestConfig=request_config)
+    config['EC2']['spot_fleet'] = {
+        'id': response['SpotFleetRequestId'],
+        'instances': [],
+    }
     print("Requested a spot fleet:", response['SpotFleetRequestId'])
-
-    save_config(config, args.config_dir)
+    _save_config(config, args.config_dir)
 
 
 def cancel_spot_fleet(args):
-    """Cancel the fleet of spot instances.
-    """
-    config = load_config(args.config_dir)
+    """Cancel the fleet of spot instances."""
+    config = _load_config(args.config_dir)
 
-    spot_fleet_id = config['EC2']['spot_fleet_id']
-    if spot_fleet_id is None:
+    if config['EC2']['spot_fleet'] is None:
         print("No active spot fleet requests. Nothing to cancel.")
         return
 
-    ec2 = boto3.client('ec2')
-
-    # Make sure the volume is marked detached if necessary
-    response = ec2.describe_spot_fleet_instances(
-        SpotFleetRequestId=spot_fleet_id)
-    instances_to_be_terminated = set(
-        [instance['InstanceId'] for instance in response['ActiveInstances']])
-    if config['EC2']['volume_attached_to'] in instances_to_be_terminated:
-        config['EC2']['volume_attached_to'] = None
-
-    print("Canceling spot fleet request %s..." % spot_fleet_id, end="")
+    print("Canceling spot fleet request {}..."
+          .format(config['EC2']['spot_fleet']['id']))
     ec2.cancel_spot_fleet_requests(
-        SpotFleetRequestIds=[spot_fleet_id],
+        SpotFleetRequestIds=[config['EC2']['spot_fleet']['id']],
         TerminateInstances=True)
     print("Done.")
 
-    config['EC2']['spot_fleet_id'] = None
-    config['EC2']['spot_fleet_zone'] = None
-    save_config(config, args.config_dir)
+    config['EC2']['spot_fleet'] = None
+    _save_config(config, args.config_dir)
 
 
-def restore_data_volume(args):
-    """Restore an EBS data volume from a snapshot. Deletes the snapshot.
-    """
-    config = load_config(args.config_dir)
-    snapshot_id = config['EC2']['snapshot_id']
+def create_efs(args):
+    """Create an EFS."""
+    config = _load_config(args.config_dir)
 
-    if snapshot_id is None:
-        print("Cannot restore a volume. No data snapshots available.")
-        return
+    if config['EC2']['efs'] is not None:
+        if not yesno(
+            "Another EFS is already associated with this project: {}. "
+            "Are you sure you want to create another one?"
+            .format(config['EC2']['efs']['id']),
+            default=False):
+            return
 
-    ec2 = boto3.client('ec2')
+    print("Creating an EFS with token '{}'...".format(args.creation_token))
+    try:
+        response = _EFS.create_file_system(
+            CreationToken=args.creation_token,
+            PerformanceMode=args.performance_mode)
+    except:
+        print("File system with token '{}' already exists."
+              .format(args.creation_token))
+        response = _EFS.describe_file_systems(
+            CreationToken=args.creation_token)
+        response = response['FileSystems'][0]
+    config['EC2']['efs'] = {
+            'id': response['FileSystemId'],
+            'CreationTime': str(response['CreationTime']),
+            'PerformanceMode': response['PerformanceMode'],
+        }
 
-    print("Restoring a volume from snapshot %s..." % snapshot_id, end="")
-    sys.stdout.flush()
-    response = ec2.create_volume(SnapshotId=snapshot_id,
-                                 AvailabilityZone=args.availability_zone,
-                                 VolumeType=args.volume_type)
-    volume_id = response['VolumeId']
-    ec2.get_waiter('volume_available').wait(VolumeIds=[volume_id])
-    config['EC2']['volume_id'] = volume_id
-    config['EC2']['volume_zone'] = args.availability_zone
+    print("Creating mount targets...")
+    response = _EC2.describe_subnets(
+        Filters=[
+            {
+                'Name': 'availability-zone',
+                'Values': args.mount_target_zones,
+            },
+        ])
+    config['EC2']['efs']['mount_targets'] = []
+    for subnet in response['Subnets']:
+        print("...{}".format(subnet['AvailabilityZone']))
+        _EFS.create_mount_target(
+            FileSystemId=config['EC2']['efs']['id'],
+            SubnetId=subnet['SubnetId'])
+        config['EC2']['efs']['mount_targets'].append(
+            subnet['AvailabilityZone'])
+    _save_config(config, args.config_dir)
     print("Done.")
 
-    print("Deleting the snapshot...", end="")
-    sys.stdout.flush()
-    response = ec2.delete_snapshot(SnapshotId=snapshot_id)
-    config['EC2']['snapshot_id'] = None
-    print("Done.")
 
-    save_config(config, args.config_dir)
-
-
-def archive_data_volume(args):
-    """Create a snapshot from the data volume. Deletes the volume.
-    """
-    config = load_config(args.config_dir)
-    volume_id = config['EC2']['volume_id']
-
-    if volume_id is None:
-        print("Cannot create a snapshot. No data volumes available.")
+def delete_efs(args):
+    """Delete EFS."""
+    config = _load_config(args.config_dir)
+    if config['EC2']['efs'] is None:
+        print("No EFS is associated with this project. Nothing to delete.")
         return
 
-    ec2 = boto3.client('ec2')
-
-    print("Creating a snapshot from volume %s..." % volume_id, end="")
-    sys.stdout.flush()
-    response = ec2.create_snapshot(VolumeId=volume_id,
-                                   Description="The volume with data.")
-    snapshot_id = response['SnapshotId']
-    ec2.get_waiter('snapshot_completed').wait(SnapshotIds=[snapshot_id])
-    config['EC2']['snapshot_id'] = snapshot_id
-    print("Done.")
-
-    print("Deleting the volume...", end="")
-    sys.stdout.flush()
-    ec2.delete_volume(VolumeId=volume_id)
-    ec2.get_waiter('volume_deleted').wait(VolumeIds=[volume_id])
-    config['EC2']['volume_id'] = None
-    config['EC2']['volume_zone'] = None
-    print("Done.")
-
-    save_config(config, args.config_dir)
+    print("Deleting EFS {}...".format(config['EC2']['efs']['id']))
+    if yesno("{}WARNING{}: This is a destructive action that cannot be undone. "
+             "Are you sure you want to delete the EFS?"
+             .format(WARNING_COLOR, RESET_COLOR),
+             default=False):
+        _EFS.delete_file_system(FileSystemId=config['EC2']['efs']['id'])
+        print("Done.")
+    else:
+        print("Deletion canceled.")
 
 
-def attach_data_volume(args):
-    """Attach the data volume to an instance.
-    """
-    config = load_config(args.config_dir)
-    volume_id = config['EC2']['volume_id']
-    attached_to = config['EC2']['volume_attached_to']
-
-    if volume_id is None:
-        print("No data volumes available. First create a data volume. "
-              "I you have a snapshot of a data volume, you can restore the "
-              "volume using `ec2 volume restore` command. "
-              "Type `ec2 volume restore -h` for help.")
-        return
-
-    if attached_to is not None:
-        print("The data volume %s is already attached to instance %s. "
-              "The volume cannot be attached to multiple instances." %
-              (volume_id, attached_to))
-        return
-
-    ec2 = boto3.client('ec2')
-
-    print("Attaching volume %s to instance %s..." %
-          (volume_id, args.instance_id), end="")
-    sys.stdout.flush()
-    response = ec2.attach_volume(VolumeId=volume_id,
-                                 InstanceId=args.instance_id,
-                                 Device=args.device)
-    ec2.get_waiter('volume_in_use').wait(VolumeIds=[volume_id])
-    config['EC2']['volume_attached_to'] = args.instance_id
-    print("Done.")
-
-    save_config(config, args.config_dir)
-
-
-def detach_data_volume(args):
-    """Detach the data volume from an instance.
-    """
-    config = load_config(args.config_dir)
-    volume_id = config['EC2']['volume_id']
-    attached_to = config['EC2']['volume_attached_to']
-
-    if volume_id is None:
-        print("No data volumes available. Nothing to do.")
-        return
-
-    if attached_to is None:
-        print("The volume %s is not attached. Nothing to do." % volume_id)
-        return
-
-    ec2 = boto3.client('ec2')
-
-    print("Detaching volume %s from instance %s..." %
-          (volume_id, attached_to), end="")
-    sys.stdout.flush()
-    response = ec2.detach_volume(VolumeId=volume_id, Force=args.force)
-    ec2.get_waiter('volume_available').wait(VolumeIds=[volume_id])
-    config['EC2']['volume_attached_to'] = None
-    print("Done.")
-
-    save_config(config, args.config_dir)
+def mount_efs(args):
+    """Mount EFS to specified instances."""
+    # TODO
