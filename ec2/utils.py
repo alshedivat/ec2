@@ -1,5 +1,7 @@
 import os
 import sys
+import time
+import yaml
 import getpass as gp
 import logging
 
@@ -37,3 +39,40 @@ def yesno(prompt, default=True):
     prompt = prompt.strip() + (" [Y/n]" if default else " [y/N]")
     raw = py23_input(prompt)
     return {'y': True, 'n': False}.get(raw.lower(), default)
+
+
+def load_config(config_dir):
+    config_path = os.path.join(config_dir, '.ec2.yaml')
+    if not os.path.isdir(config_dir):
+        print("{}ERROR{}: Directory '{}' does not exist."
+              .format(ERROR_COLOR, RESET_COLOR, config_dir))
+        sys.exit(1)
+    if not os.path.isfile(config_path):
+        print("{}ERROR{}: Cannot find ec2 configuration in '{}'. "
+              "Please run `configure` command in your project directory "
+              "to create a new '.ec2.yaml' config."
+              .format(ERROR_COLOR, RESET_COLOR, config_path))
+        sys.exit(1)
+    with open(config_path) as fp:
+        config = yaml.load(fp)
+    return config
+
+
+def save_config(config, config_dir):
+    if not os.path.isdir(config_dir):
+        print("{}ERROR{}: Directory '{}' does not exist."
+              .format(ERROR_COLOR, RESET_COLOR, config_dir))
+        sys.exit(1)
+    config_path = os.path.join(config_dir, '.ec2.yaml')
+    with open(config_path, 'w') as fp:
+        yaml.dump(config, fp, default_flow_style=False)
+
+
+def wait(request_callback, condition_callback, sleep_time=5.0):
+    response = None
+    while response is None or condition_callback(response):
+        time.sleep(sleep_time)
+        try:
+            response = request_callback()
+        except:
+            break

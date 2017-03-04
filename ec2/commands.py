@@ -5,15 +5,16 @@ The number of available commands is kept as succinct as possible intentionally.
 """
 from __future__ import absolute_import, print_function
 
-import datetime
-import boto3
-import yaml
-import sys
 import os
+import sys
+import yaml
+import datetime
+
+import boto3
 
 from pprint import pprint
 
-from .utils import *
+from . import utils
 
 
 # AWS service clients
@@ -22,36 +23,9 @@ _IAM = boto3.client('iam')
 _EFS = boto3.client('efs')
 
 
-def _load_config(config_dir):
-    config_path = os.path.join(config_dir, '.ec2.yaml')
-    if not os.path.isdir(config_dir):
-        print("{}ERROR{}: Directory '{}' does not exist."
-              .format(ERROR_COLOR, RESET_COLOR, config_dir))
-        sys.exit(1)
-    if not os.path.isfile(config_path):
-        print("{}ERROR{}: Cannot find ec2 configuration in '{}'. "
-              "Please run `configure` command in your project directory "
-              "to create a new '.ec2.yaml' config."
-              .format(ERROR_COLOR, RESET_COLOR, config_path))
-        sys.exit(1)
-    with open(config_path) as fp:
-        config = yaml.load(fp)
-    return config
-
-
-def _save_config(config, config_dir):
-    if not os.path.isdir(config_dir):
-        print("{}ERROR{}: Directory '{}' does not exist."
-              .format(ERROR_COLOR, RESET_COLOR, config_dir))
-        sys.exit(1)
-    config_path = os.path.join(config_dir, '.ec2.yaml')
-    with open(config_path, 'w') as fp:
-        yaml.dump(config, fp, default_flow_style=False)
-
-
 def show(args):
     """Show configuration of the current project."""
-    config = _load_config(args.config_dir)
+    config = utils.load_config(args.config_dir)
     print(yaml.dump(config, default_flow_style=False))
 
 
@@ -60,9 +34,10 @@ def configure(args):
     """
     config_path = os.path.join(args.config_dir, '.ec2.yaml')
     if os.path.isfile(config_path):
-        overwrite = yesno("Found an existing config in '{}'. "
-                          "Would you like to overwrite?".format(config_path),
-                          default=False)
+        overwrite = utils.yesno(
+            "Found an existing config in '{}'. "
+            "Would you like to overwrite?".format(config_path),
+            default=False)
         if not overwrite:
             return
 
@@ -86,21 +61,14 @@ def configure(args):
         'efs': None,
     }
 
-    _save_config(config, args.config_dir)
+    utils.save_config(config, args.config_dir)
     print("Done.")
 
 
 def refresh(args):
     """Refresh config of the current project."""
-    config_path = os.path.join(args.config_dir, '.ec2.yaml')
-    if not os.path.isfile(config_path):
-        print("ec2 has not been configured for the current project. "
-              "Please run `configure` command in your project directory "
-              "to create a new '.ec2.yaml' config.")
-        return
-
     print("Refreshing config for '{}'...".format(args.config_dir))
-    config = _load_config(args.config_dir)
+    config = utils.load_config(args.config_dir)
 
     # Check on the spot fleet
     if config['EC2']['spot_fleet'] is not None:
@@ -119,7 +87,7 @@ def refresh(args):
         if not response['FileSystems']:
             config['EC2']['efs'] = None
 
-    _save_config(config, args.config_dir)
+    utils.save_config(config, args.config_dir)
     print("Done.")
 
 
@@ -135,7 +103,7 @@ def list_amis(args):
         print('ImageType:', ami['ImageType'])
         print('CreationDate:', ami['CreationDate'])
         print('State:', ami['State'])
-        sys.stdout.flush()
+        utils.STDOUT.flush()
     print('-' * 80)
 
 
@@ -154,7 +122,7 @@ def list_instances(args):
         })
     if not args.all:
         print("Instances used in the current project:")
-        config = _load_config(args.config_dir)
+        config = utils.load_config(args.config_dir)
         if config['EC2']['spot_fleet'] is not None:
             response = _EC2.describe_spot_fleet_instances(
                 SpotFleetRequestId=config['EC2']['spot_fleet']['id'])
@@ -181,7 +149,7 @@ def list_instances(args):
             print('InstanceType:', instance['InstanceType'])
             print('PublicDnsName:', instance['PublicDnsName'])
             print('PublicIpAddress:', instance['PublicIpAddress'])
-            sys.stdout.flush()
+            utils.STDOUT.flush()
         print('-' * 80)
 
 
@@ -198,7 +166,7 @@ def list_snapshots(args):
             print('SnapshotId:', snapshot['SnapshotId'])
             print('VolumeId:', snapshot['VolumeId'])
             print('State:', snapshot['State'])
-            sys.stdout.flush()
+            utils.STDOUT.flush()
         print('-' * 80)
 
 
@@ -211,12 +179,11 @@ def list_efs(args):
     else:
         for efs in response['FileSystems']:
             print('-' * 80)
-            print('Name', efs['Name'])
             print('FileSystemId:', efs['FileSystemId'])
             print('CreationTime:', efs['CreationTime'])
             print('LifeCycleState:', efs['LifeCycleState'])
             print('NumberOfMountTargets:', efs['NumberOfMountTargets'])
-            sys.stdout.flush()
+            utils.STDOUT.flush()
         print('-' * 80)
 
 
@@ -237,7 +204,7 @@ def display_spot_price_history(args):
             prices_per_zone[price['AvailabilityZone']].append(
                 (price['Timestamp'], price['SpotPrice'])
             )
-        except:
+        except AttributeError:
             prices_per_zone[price['AvailabilityZone']] = [
                 (price['Timestamp'], price['SpotPrice'])
             ]
@@ -253,7 +220,7 @@ def display_spot_price_history(args):
 
 def request_spot_fleet(args):
     """Request a new fleet of spot instances."""
-    config = _load_config(args.config_dir)
+    config = utils.load_config(args.config_dir)
 
     if config['EC2']['spot_fleet'] is not None:
         print("According to the current config, there already exists"
@@ -295,12 +262,12 @@ def request_spot_fleet(args):
         'instances': [],
     }
     print("Requested a spot fleet:", response['SpotFleetRequestId'])
-    _save_config(config, args.config_dir)
+    utils.save_config(config, args.config_dir)
 
 
 def cancel_spot_fleet(args):
     """Cancel the fleet of spot instances."""
-    config = _load_config(args.config_dir)
+    config = utils.load_config(args.config_dir)
 
     if config['EC2']['spot_fleet'] is None:
         print("No active spot fleet requests. Nothing to cancel.")
@@ -314,19 +281,20 @@ def cancel_spot_fleet(args):
     print("Done.")
 
     config['EC2']['spot_fleet'] = None
-    _save_config(config, args.config_dir)
+    utils.save_config(config, args.config_dir)
 
 
 def create_efs(args):
     """Create an EFS."""
-    config = _load_config(args.config_dir)
+    config = utils.load_config(args.config_dir)
 
     if config['EC2']['efs'] is not None:
-        if not yesno(
+        create_another_efs = utils.yesno(
             "Another EFS is already associated with this project: {}. "
             "Are you sure you want to create another one?"
             .format(config['EC2']['efs']['id']),
-            default=False):
+            default=False)
+        if not create_another_efs:
             return
 
     print("Creating an EFS with token '{}'...".format(args.creation_token))
@@ -346,7 +314,17 @@ def create_efs(args):
             'PerformanceMode': response['PerformanceMode'],
         }
 
+    # It seems like EFS doesn't have waiters (yet?)
+    # We need to have EFS available before creating mount targets...
+    request_callback = lambda : \
+        _EFS.describe_file_systems(
+            FileSystemId=config['EC2']['efs']['id'])['FileSystems'][0]
+    condition_callback = lambda response: \
+        response['LifeCycleState'] != 'available'
+    utils.wait(request_callback, condition_callback, sleep_time=3.0)
+
     print("Creating mount targets...")
+    config['EC2']['efs']['mount_targets'] = {}
     response = _EC2.describe_subnets(
         Filters=[
             {
@@ -354,34 +332,90 @@ def create_efs(args):
                 'Values': args.mount_target_zones,
             },
         ])
-    config['EC2']['efs']['mount_targets'] = []
-    for subnet in response['Subnets']:
-        print("...{}".format(subnet['AvailabilityZone']))
-        _EFS.create_mount_target(
+    subnets = {
+        subnet['SubnetId']: subnet['AvailabilityZone']
+        for subnet in response['Subnets']
+    }
+
+    # Read the existing mount targets
+    response = _EFS.describe_mount_targets(
+        FileSystemId=config['EC2']['efs']['id'])
+    for mount_target in response['MountTargets']:
+        if mount_target['SubnetId'] in subnets:
+            availability_zone = subnets[mount_target['SubnetId']]
+            config['EC2']['efs']['mount_targets'][availability_zone] = \
+                mount_target['MountTargetId']
+            print("...in {} - already exists.".format(availability_zone))
+            utils.STDOUT.flush()
+
+    # Create mount targets (if necessary)
+    for subnet_id, availability_zone in subnets.iteritems():
+        if availability_zone in config['EC2']['efs']['mount_targets']:
+            continue
+        print("...in {} - ".format(availability_zone), end="")
+        utils.STDOUT.flush()
+        response = _EFS.create_mount_target(
             FileSystemId=config['EC2']['efs']['id'],
             SubnetId=subnet['SubnetId'])
-        config['EC2']['efs']['mount_targets'].append(
-            subnet['AvailabilityZone'])
-    _save_config(config, args.config_dir)
+        config['EC2']['efs']['mount_targets'][availability_zone] = \
+            response['MountTargetId']
+        # Wait on mount target being created...
+        request_callback = lambda : \
+            _EFS.describe_mount_targets(
+                MountTargetId=response['MountTargetId'])['MountTargets'][0]
+        condition_callback = lambda response: \
+            response['LifeCycleState'] != 'available'
+        utils.wait(request_callback, condition_callback, sleep_time=3.0)
+        print("done.")
+
+    utils.save_config(config, args.config_dir)
     print("Done.")
 
 
 def delete_efs(args):
     """Delete EFS."""
-    config = _load_config(args.config_dir)
+    config = utils.load_config(args.config_dir)
     if config['EC2']['efs'] is None:
         print("No EFS is associated with this project. Nothing to delete.")
         return
+    efs_id = config['EC2']['efs']['id']
+    efs_mount_targets = config['EC2']['efs']['mount_targets']
 
-    print("Deleting EFS {}...".format(config['EC2']['efs']['id']))
-    if yesno("{}WARNING{}: This is a destructive action that cannot be undone. "
-             "Are you sure you want to delete the EFS?"
-             .format(WARNING_COLOR, RESET_COLOR),
-             default=False):
-        _EFS.delete_file_system(FileSystemId=config['EC2']['efs']['id'])
+    # Delete the EFS
+    delete_efs = utils.yesno(
+        "{}WARNING{}: This is a destructive action that cannot be undone. "
+        "Are you sure you want to delete the EFS?"
+        .format(utils.WARNING_COLOR, utils.RESET_COLOR),
+        default=False)
+    if delete_efs:
+        print("Deleting EFS {} mount targets...".format(efs_id))
+        for availability_zone, mount_target_id in efs_mount_targets.iteritems():
+            print("...in {} - ".format(availability_zone), end="")
+            utils.STDOUT.flush()
+            _EFS.delete_mount_target(MountTargetId=mount_target_id)
+            # Wait on mount target being deleted...
+            request_callback = lambda : \
+                _EFS.describe_mount_targets(
+                    MountTargetId=mount_target_id)['MountTargets'][0]
+            condition_callback = lambda response: \
+                response['LifeCycleState'] != 'deleted'
+            utils.wait(request_callback, condition_callback, sleep_time=3.0)
+            print("done.")
+
+        print("Deleting EFS {}...".format(efs_id))
+        _EFS.delete_file_system(FileSystemId=efs_id)
+        # Wait on file system being deleted...
+        request_callback = lambda : \
+            _EFS.describe_file_systems(FileSystemId=efs_id)['FileSystems'][0]
+        condition_callback = lambda response: \
+            response['LifeCycleState'] != 'deleted'
+        utils.wait(request_callback, condition_callback, sleep_time=3.0)
+        config['EC2']['efs'] = None
         print("Done.")
     else:
         print("Deletion canceled.")
+
+    utils.save_config(config, args.config_dir)
 
 
 def mount_efs(args):
