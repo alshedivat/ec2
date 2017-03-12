@@ -358,7 +358,7 @@ def create_efs(args):
         utils.STDOUT.flush()
         response = _EFS.create_mount_target(
             FileSystemId=config['EFS']['id'],
-            SubnetId=subnet['SubnetId'])
+            SubnetId=subnet_id)
         config['EFS']['mount_targets'][availability_zone] = \
             str(response['MountTargetId'])
         # Wait on mount target being created...
