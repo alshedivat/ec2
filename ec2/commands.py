@@ -127,6 +127,9 @@ def list_instances(args):
         if config['EC2']['spot_fleet'] is not None:
             response = _EC2.describe_spot_fleet_instances(
                 SpotFleetRequestId=config['EC2']['spot_fleet']['id'])
+            if not response['ActiveInstances']:
+                print("No instances are currently in use.")
+                return
             spot_instance_request_id = \
                 response['ActiveInstances'][0]['SpotInstanceRequestId']
             filters.append({
@@ -134,7 +137,7 @@ def list_instances(args):
                 'Values': [spot_instance_request_id],
             })
         else:
-            print("No instances are in use.")
+            print("No instances are currently in use.")
             return
     else:
         print("Available instances:")
@@ -276,7 +279,7 @@ def cancel_spot_fleet(args):
 
     print("Canceling spot fleet request {}..."
           .format(config['EC2']['spot_fleet']['id']))
-    ec2.cancel_spot_fleet_requests(
+    _EC2.cancel_spot_fleet_requests(
         SpotFleetRequestIds=[config['EC2']['spot_fleet']['id']],
         TerminateInstances=True)
     print("Done.")
